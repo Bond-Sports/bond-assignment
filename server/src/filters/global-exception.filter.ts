@@ -18,7 +18,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    if (status === HttpStatus.CONFLICT && exception instanceof HttpException) {
+    if (
+      (status as HttpStatus) === HttpStatus.CONFLICT &&
+      exception instanceof HttpException
+    ) {
       const exceptionResponse = exception.getResponse();
       const message =
         typeof exceptionResponse === 'object' && 'message' in exceptionResponse

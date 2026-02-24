@@ -1,18 +1,22 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { join } from 'path';
 import { SlotsModule } from './slots/slots.module';
 import { ResourcesModule } from './resources/resources.module';
 
 @Module({
   imports: [
     TypeOrmModule.forRoot({
-      type: 'sqlite',
-      database: join(__dirname, '..', 'database.sqlite'),
+      type: 'postgres',
+      host: 'localhost',
+      port: 5432,
+      username: 'bond',
+      password: 'bond',
+      database: 'bond',
       autoLoadEntities: true,
+      synchronize: true,
     }),
     SlotsModule,
     ResourcesModule,
   ],
 })
-export class AppModule { }
+export class AppModule {}

@@ -47,7 +47,7 @@ Defines which resources block other resources. If resource A **blocks** resource
 Pool ──blocks──▶ Lane 1
 Pool ──blocks──▶ Lane 2
 Pool ──blocks──▶ Lane 3
-Lane 1 ──blocks──▶ Lane 2
+Lane 3 ──blocks──▶ Lane 2
 Lane 2 ──blocks──▶ Lane 3
 ```
 
@@ -105,7 +105,6 @@ For example, since Pool blocks Lane 1, the Lane 1 entry includes both Lane 1 slo
             "start": "2026-02-23T08:30:00",
             "end": "2026-02-23T10:00:00",
             "resourceId": 2,
-            "conflicts": []
           },
           {
             "id": 2,
@@ -113,7 +112,6 @@ For example, since Pool blocks Lane 1, the Lane 1 entry includes both Lane 1 slo
             "start": "2026-02-23T09:30:00",
             "end": "2026-02-23T11:00:00",
             "resourceId": 1,
-            "conflicts": []
           }
         ]
       },

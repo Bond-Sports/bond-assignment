@@ -1,21 +1,21 @@
 import { DataSource } from 'typeorm';
-import { join } from 'path';
-import { existsSync, unlinkSync } from 'fs';
-import { Resource } from './entities/resource.entity';
 import { BlockingDependency } from './entities/blocking-dependency.entity';
+import { Resource } from './entities/resource.entity';
 import { Slot } from './entities/slot.entity';
-import { getSeedResources, getSeedDependencies, getSeedSlots } from './seed-data';
+import {
+  getSeedDependencies,
+  getSeedResources,
+  getSeedSlots,
+} from './seed-data';
 
-export const DB_PATH = join(__dirname, '..', 'database.sqlite');
-
-export async function seed(dbPath: string = DB_PATH): Promise<void> {
-  if (existsSync(dbPath)) {
-    unlinkSync(dbPath);
-  }
-
+export async function seed(): Promise<void> {
   const dataSource = new DataSource({
-    type: 'sqlite',
-    database: dbPath,
+    type: 'postgres',
+    host: 'localhost',
+    port: 5432,
+    username: 'bond',
+    password: 'bond',
+    database: 'bond',
     entities: [Resource, BlockingDependency, Slot],
     synchronize: true,
   });
@@ -26,19 +26,23 @@ export async function seed(dbPath: string = DB_PATH): Promise<void> {
   const depRepo = dataSource.getRepository(BlockingDependency);
   const slotRepo = dataSource.getRepository(Slot);
 
+  await resourceRepo.query('TRUNCATE TABLE "Resources" CASCADE');
+  await depRepo.query('TRUNCATE TABLE "BlockingDependencies" CASCADE');
+  await slotRepo.query('TRUNCATE TABLE "Slots" CASCADE');
+
   const resourceMap = new Map<string, number>();
   for (const r of getSeedResources()) {
     const saved = await resourceRepo.save(r);
     resourceMap.set(saved.name, saved.id);
   }
 
-  const deps = getSeedDependencies().map(d => ({
+  const deps = getSeedDependencies().map((d) => ({
     blockingResourceId: resourceMap.get(d.blockingName)!,
     blockedResourceId: resourceMap.get(d.blockedName)!,
   }));
   await depRepo.save(deps);
 
-  const slots = getSeedSlots().map(s => ({
+  const slots = getSeedSlots().map((s) => ({
     name: s.name,
     start: s.start,
     end: s.end,

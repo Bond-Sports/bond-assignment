@@ -3,16 +3,13 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { join } from 'path';
 import { DataSource } from 'typeorm';
 import { SlotsModule } from '../src/slots/slots.module';
 import { Resource } from '../src/entities/resource.entity';
 import { BlockingDependency } from '../src/entities/blocking-dependency.entity';
 import { Slot } from '../src/entities/slot.entity';
 import { seed } from '../src/seed';
-import { SlotDto } from 'src/slots/types/dtos/slots.dto';
-
-const TEST_DB_PATH = join(__dirname, '..', 'test-database.sqlite');
+import { ResourceSlotsDto, SlotDto } from 'src/slots/types/dtos/slots.dto';
 
 function formatDate(date: Date): string {
   const y = date.getFullYear();
@@ -31,13 +28,17 @@ describe('Slots API (e2e)', () => {
   let lane1Id: number;
 
   beforeAll(async () => {
-    await seed(TEST_DB_PATH);
+    await seed();
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [
         TypeOrmModule.forRoot({
-          type: 'sqlite',
-          database: TEST_DB_PATH,
+          type: 'postgres',
+          host: 'localhost',
+          port: 5432,
+          username: 'bond',
+          password: 'bond',
+          database: 'bond',
           entities: [Resource, BlockingDependency, Slot],
         }),
         SlotsModule,
@@ -45,7 +46,9 @@ describe('Slots API (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ transform: true, whitelist: true }),
+    );
     await app.init();
 
     const ds = moduleFixture.get(DataSource);
@@ -63,21 +66,28 @@ describe('Slots API (e2e)', () => {
   // ─── GET /slots ─────────────────────────────────────────────────────
 
   describe('GET /slots', () => {
-    let slots: SlotDto[];
+    let resourceSlots: ResourceSlotsDto[];
 
     beforeAll(async () => {
-      const { body } = await request(app.getHttpServer())
+      const response = await request(app.getHttpServer())
         .get('/slots')
         .expect(200);
-      slots = body;
+      resourceSlots = response.body as ResourceSlotsDto[];
     });
 
-    it('should return all seeded slots', () => {
-      expect(slots.length).toBeGreaterThan(0);
+    it('should return one entry per resource', () => {
+      expect(resourceSlots.length).toBeGreaterThan(0);
+      for (const entry of resourceSlots) {
+        expect(entry).toHaveProperty('resourceId');
+        expect(entry).toHaveProperty('slots');
+        expect(Array.isArray(entry.slots)).toBe(true);
+      }
     });
 
     it('should return slots with the correct shape', () => {
-      for (const slot of slots) {
+      const allSlots = resourceSlots.flatMap((rs) => rs.slots);
+      expect(allSlots.length).toBeGreaterThan(0);
+      for (const slot of allSlots) {
         expect(slot).toHaveProperty('id');
         expect(slot).toHaveProperty('name');
         expect(slot).toHaveProperty('start');
@@ -89,26 +99,27 @@ describe('Slots API (e2e)', () => {
     });
 
     it('should have at least one slot with conflicts', () => {
-      const slotsWithConflicts = slots.filter(s => s.conflicts.length > 0);
+      const allSlots = resourceSlots.flatMap((rs) => rs.slots);
+      const slotsWithConflicts = allSlots.filter(
+        (s) => s.conflicts.length > 0,
+      );
       expect(slotsWithConflicts.length).toBeGreaterThan(0);
     });
 
     it('should have conflicts with the correct shape', () => {
-      const slotWithConflicts = slots.find(s => s.conflicts.length > 0);
-
+      const allSlots = resourceSlots.flatMap((rs) => rs.slots);
+      const slotWithConflicts = allSlots.find((s) => s.conflicts.length > 0);
 
       if (!slotWithConflicts) {
         throw new Error('No slot with conflicts found');
       }
 
-      for (const conflict of slotWithConflicts?.conflicts ?? []) {
+      for (const conflict of slotWithConflicts.conflicts) {
         expect(conflict).toHaveProperty('id');
         expect(conflict).toHaveProperty('name');
         expect(conflict).toHaveProperty('start');
         expect(conflict).toHaveProperty('end');
         expect(conflict).toHaveProperty('resourceId');
-        expect(conflict).toHaveProperty('conflicts');
-        expect(conflict.conflicts).toEqual([]);
       }
     });
   });
@@ -117,7 +128,7 @@ describe('Slots API (e2e)', () => {
 
   describe('POST /slots', () => {
     it('should create a slot when there are no conflicts', async () => {
-      const { body } = await request(app.getHttpServer())
+      const response = await request(app.getHttpServer())
         .post('/slots')
         .send({
           name: 'No Conflict Slot',
@@ -127,6 +138,7 @@ describe('Slots API (e2e)', () => {
         })
         .expect(201);
 
+      const body = response.body as SlotDto;
       expect(body).toHaveProperty('id');
       expect(body.name).toBe('No Conflict Slot');
       expect(body.start).toBe(dt('05:00:00'));
@@ -135,7 +147,7 @@ describe('Slots API (e2e)', () => {
     });
 
     it('should reject with 409 and return conflicting slots when conflicts exist', async () => {
-      const { body } = await request(app.getHttpServer())
+      const response = await request(app.getHttpServer())
         .post('/slots')
         .send({
           name: 'Conflict Slot',
@@ -145,6 +157,7 @@ describe('Slots API (e2e)', () => {
         })
         .expect(409);
 
+      const body = response.body as SlotDto[];
       expect(body).toBeDefined();
       expect(body.length).toBeGreaterThan(0);
       for (const conflict of body) {
@@ -163,7 +176,7 @@ describe('Slots API (e2e)', () => {
     let slotId: number;
 
     beforeAll(async () => {
-      const { body } = await request(app.getHttpServer())
+      const response = await request(app.getHttpServer())
         .post('/slots')
         .send({
           name: 'Editable Slot',
@@ -173,11 +186,11 @@ describe('Slots API (e2e)', () => {
         })
         .expect(201);
 
-      slotId = body.id;
+      slotId = (response.body as SlotDto).id;
     });
 
     it('should update slot times when there are no conflicts', async () => {
-      const { body } = await request(app.getHttpServer())
+      const response = await request(app.getHttpServer())
         .put(`/slots/${slotId}`)
         .send({
           start: dt('23:00:00'),
@@ -185,13 +198,14 @@ describe('Slots API (e2e)', () => {
         })
         .expect(200);
 
+      const body = response.body as SlotDto;
       expect(body.id).toBe(slotId);
       expect(body.start).toBe(dt('23:00:00'));
       expect(body.end).toBe(dt('23:30:00'));
     });
 
     it('should reject with 409 and return conflicting slots when new times conflict', async () => {
-      const { body } = await request(app.getHttpServer())
+      const response = await request(app.getHttpServer())
         .put(`/slots/${slotId}`)
         .send({
           start: dt('09:00:00'),
@@ -199,6 +213,7 @@ describe('Slots API (e2e)', () => {
         })
         .expect(409);
 
+      const body = response.body as SlotDto[];
       expect(body).toBeDefined();
       expect(body.length).toBeGreaterThan(0);
       for (const conflict of body) {

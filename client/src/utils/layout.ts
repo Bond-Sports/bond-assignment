@@ -74,14 +74,11 @@ export function computeSlotLayout(slots: Slot[]): SlotLayout[] {
   }
 
   const totalColsMap = new Map<number, number>();
-  const conflictMap = new Map<number, boolean>();
 
   for (const group of groups) {
     const maxCol = Math.max(...group.map((s) => slotCol.get(s.id)!));
-    const hasConflict = group.length > 1;
     for (const s of group) {
       totalColsMap.set(s.id, maxCol + 1);
-      conflictMap.set(s.id, hasConflict);
     }
   }
 
@@ -89,6 +86,6 @@ export function computeSlotLayout(slots: Slot[]): SlotLayout[] {
     slot,
     column: slotCol.get(slot.id)!,
     totalColumns: totalColsMap.get(slot.id)!,
-    hasConflict: conflictMap.get(slot.id)!,
+    hasConflict: slot.conflicts.length > 0,
   }));
 }
