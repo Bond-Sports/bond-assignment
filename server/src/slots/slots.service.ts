@@ -14,177 +14,65 @@ import {
 export class SlotsService {
   constructor(private readonly manager: EntityManager) {}
 
-  private toSlotDto(slot: Slot, conflicts: SlotDto[] = []): SlotDto {
-    return {
-      id: slot.id,
-      name: slot.name,
-      start: slot.start,
-      end: slot.end,
-      resourceId: slot.resourceId,
-      conflicts,
-    };
-  }
-
-  private overlaps(
-    aStart: string,
-    aEnd: string,
-    bStart: string,
-    bEnd: string,
-  ): boolean {
-    return aStart < bEnd && aEnd > bStart;
-  }
-
-  private formatDate(date: Date): string {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  }
-
-  private async getBlockerIds(resourceId: number): Promise<number[]> {
-    const deps = await this.manager.find(BlockingDependency, {
-      where: { blockedResourceId: resourceId },
-    });
-    return deps.map((d) => d.blockingResourceId);
-  }
-
-  /**
-   * Finds all existing slots that conflict with a proposed time range on a resource.
-   * Checks same resource + upstream blockers.
-   */
-  private async findConflicts(
-    resourceId: number,
-    start: string,
-    end: string,
-    excludeSlotId?: number,
-  ): Promise<SlotDto[]> {
-    const blockerIds = await this.getBlockerIds(resourceId);
-    const relevantResourceIds = [resourceId, ...blockerIds];
-
-    const allSlots = await this.manager.find(Slot);
-
-    return allSlots
-      .filter((slot) => {
-        if (excludeSlotId != null && slot.id === excludeSlotId) return false;
-        if (!relevantResourceIds.includes(slot.resourceId)) return false;
-        return this.overlaps(start, end, slot.start, slot.end);
-      })
-      .map((slot) => this.toSlotDto(slot));
-  }
-
   async getSlots(): Promise<ResourceSlotsDto[]> {
-    const today = new Date();
-    const todayStr = this.formatDate(today);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = this.formatDate(tomorrow);
-
-    const todayStart = `${todayStr}T00:00:00`;
-    const tomorrowStart = `${tomorrowStr}T00:00:00`;
-
-    const resources = await this.manager.find(Resource, {
+    // TODO: Implement this method.
+    // Return today's slots grouped by resource, including slots from
+    // blocking resources. Each slot should have its conflicts computed.
+    const slots = await this.manager.find(Slot, {
       order: { id: 'ASC' },
     });
 
-    const allSlots = await this.manager.find(Slot, {
-      order: { start: 'ASC' },
-    });
+    const result: ResourceSlotsDto[] = [];
 
-    const todaySlots = allSlots.filter((s) =>
-      this.overlaps(s.start, s.end, todayStart, tomorrowStart),
-    );
+    for (const slot of slots) {
+      let resource = result.find((r) => r.resourceId === slot.resourceId);
 
-    const allDeps = await this.manager.find(BlockingDependency);
-    const blockersMap = new Map<number, number[]>();
-    for (const dep of allDeps) {
-      if (!blockersMap.has(dep.blockedResourceId)) {
-        blockersMap.set(dep.blockedResourceId, []);
+      if (!resource) {
+        resource = {
+          resourceId: slot.resourceId,
+          slots: [],
+        };
+        result.push(resource);
       }
-      blockersMap.get(dep.blockedResourceId)!.push(dep.blockingResourceId);
+
+      resource.slots.push({ ...slot, conflicts: [] });
     }
 
-    const slotConflictsMap = new Map<number, SlotDto[]>();
-    for (const slot of todaySlots) {
-      const blockerIds = blockersMap.get(slot.resourceId) || [];
-      const conflicts = todaySlots
-        .filter((other) => {
-          if (other.id === slot.id) return false;
-          if (
-            other.resourceId !== slot.resourceId &&
-            !blockerIds.includes(other.resourceId)
-          )
-            return false;
-          return this.overlaps(slot.start, slot.end, other.start, other.end);
-        })
-        .map((other) => this.toSlotDto(other));
-      slotConflictsMap.set(slot.id, conflicts);
-    }
-
-    return resources.map((resource) => {
-      const blockerIds = blockersMap.get(resource.id) || [];
-      const relevantResourceIds = [resource.id, ...blockerIds];
-
-      const slots = todaySlots
-        .filter((s) => relevantResourceIds.includes(s.resourceId))
-        .map((s) => this.toSlotDto(s, slotConflictsMap.get(s.id) || []));
-
-      return { resourceId: resource.id, slots };
-    });
+    return result;
   }
 
   async addSlot(createSlot: CreateSlotDto): Promise<SlotDto> {
-    const conflicts = await this.findConflicts(
-      createSlot.resourceId,
-      createSlot.start,
-      createSlot.end,
-    );
+    // TODO: Implement this method.
+    // Check for conflicts before saving. Reject with 409 if any exist.
 
-    if (conflicts.length > 0) {
-      throw new HttpException(
-        conflicts as unknown as Record<string, unknown>,
-        HttpStatus.CONFLICT,
-      );
-    }
-
-    const slot = await this.manager.save(
+    return this.manager.save(
       Slot.create({
+        name: createSlot.name,
         start: createSlot.start,
         end: createSlot.end,
-        name: createSlot.name,
         resourceId: createSlot.resourceId,
       }),
     );
-
-    return this.toSlotDto(slot);
   }
 
   async updateSlot(
     slotId: number,
     updateSlot: UpdateSlotTimesDto,
   ): Promise<SlotDto> {
-    const existingSlot = await this.manager.findOneBy(Slot, { id: slotId });
-    if (!existingSlot) {
-      throw new HttpException('Slot not found', HttpStatus.NOT_FOUND);
-    }
+    // TODO: Implement this method.
+    // Check for conflicts before saving. Reject with 409 if any exist.
 
-    const conflicts = await this.findConflicts(
-      existingSlot.resourceId,
-      updateSlot.start,
-      updateSlot.end,
-      slotId,
-    );
+    const slot = await this.manager.findOneOrFail(Slot, {
+      where: { id: slotId },
+    });
 
-    if (conflicts.length > 0) {
-      throw new HttpException(
-        conflicts as unknown as Record<string, unknown>,
-        HttpStatus.CONFLICT,
-      );
-    }
+    slot.start = updateSlot.start;
+    slot.end = updateSlot.end;
+    await this.manager.save(slot);
 
-    existingSlot.start = updateSlot.start;
-    existingSlot.end = updateSlot.end;
-    await this.manager.save(existingSlot);
-
-    return this.toSlotDto(existingSlot);
+    return {
+      ...slot,
+      conflicts: [],
+    };
   }
 }
