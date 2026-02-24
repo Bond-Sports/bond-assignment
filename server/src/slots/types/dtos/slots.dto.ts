@@ -8,27 +8,6 @@ import {
   IsString,
 } from 'class-validator';
 
-export class TimeSlotDto {
-  @ApiProperty({
-    example: '2026-02-23T09:00:00',
-    description: 'Start datetime (YYYY-MM-DDThh:mm:ss)',
-  })
-  @IsDateString()
-  start: string;
-
-  @ApiProperty({
-    example: '2026-02-23T10:30:00',
-    description: 'End datetime (YYYY-MM-DDThh:mm:ss)',
-  })
-  @IsDateString()
-  end: string;
-
-  @ApiProperty({ example: 2, description: 'ID of the resource to book' })
-  @IsInt()
-  @IsPositive()
-  resourceId: number;
-}
-
 export class CreateSlotDto {
   @ApiProperty({ example: 'Morning Swim', description: 'Booking title' })
   @IsString()

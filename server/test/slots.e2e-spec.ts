@@ -33,12 +33,8 @@ describe('Slots API (e2e)', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [
         TypeOrmModule.forRoot({
-          type: 'postgres',
-          host: 'localhost',
-          port: 5432,
-          username: 'bond',
-          password: 'bond',
-          database: 'bond',
+          type: 'better-sqlite3',
+          database: 'bond.sqlite',
           entities: [Resource, BlockingDependency, Slot],
         }),
         SlotsModule,
@@ -122,6 +118,48 @@ describe('Slots API (e2e)', () => {
         expect(conflict).toHaveProperty('resourceId');
       }
     });
+
+    it('should include Pool slots in Lane 1 entry (blocking dependency)', () => {
+      const lane1Entry = resourceSlots.find((rs) => rs.resourceId === lane1Id);
+      expect(lane1Entry).toBeDefined();
+
+      const poolSlotsInLane1 = lane1Entry!.slots.filter(
+        (s) => s.resourceId === poolId,
+      );
+      expect(poolSlotsInLane1.length).toBeGreaterThan(0);
+    });
+
+    it('should NOT include Lane 1 slots in Pool entry (blocking is one-directional)', () => {
+      const poolEntry = resourceSlots.find((rs) => rs.resourceId === poolId);
+      expect(poolEntry).toBeDefined();
+
+      const lane1SlotsInPool = poolEntry!.slots.filter(
+        (s) => s.resourceId === lane1Id,
+      );
+      expect(lane1SlotsInPool.length).toBe(0);
+    });
+
+    it('should list a Pool slot as a conflict on an overlapping Lane 1 slot', () => {
+      const lane1Entry = resourceSlots.find((rs) => rs.resourceId === lane1Id);
+      const lane1OwnSlots = lane1Entry!.slots.filter(
+        (s) => s.resourceId === lane1Id,
+      );
+
+      const hasPoolConflict = lane1OwnSlots.some((s) =>
+        s.conflicts?.some((c) => c.resourceId === poolId),
+      );
+      expect(hasPoolConflict).toBe(true);
+    });
+
+    it('should NOT list Lane 1 slots as conflicts on Pool slots', () => {
+      const poolEntry = resourceSlots.find((rs) => rs.resourceId === poolId);
+      const poolSlots = poolEntry!.slots;
+
+      const hasLane1Conflict = poolSlots.some((s) =>
+        s.conflicts?.some((c) => c.resourceId === lane1Id),
+      );
+      expect(hasLane1Conflict).toBe(false);
+    });
   });
 
   // ─── POST /slots ────────────────────────────────────────────────────
@@ -167,6 +205,38 @@ describe('Slots API (e2e)', () => {
         expect(conflict).toHaveProperty('end');
         expect(conflict).toHaveProperty('resourceId');
       }
+    });
+
+    it('should allow creating an adjacent (touching) slot without conflict', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/slots')
+        .send({
+          name: 'Adjacent Slot',
+          start: dt('08:00:00'),
+          end: dt('08:15:00'),
+          resourceId: poolId,
+        })
+        .expect(201);
+
+      const body = response.body as SlotDto;
+      expect(body.name).toBe('Adjacent Slot');
+      expect(body.start).toBe(dt('08:00:00'));
+    });
+
+    it('should include cross-resource conflicts from blocking resources in 409', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/slots')
+        .send({
+          name: 'Cross-Resource Conflict',
+          start: dt('09:30:00'),
+          end: dt('10:30:00'),
+          resourceId: lane1Id,
+        })
+        .expect(409);
+
+      const body = response.body as SlotDto[];
+      const poolConflicts = body.filter((c) => c.resourceId === poolId);
+      expect(poolConflicts.length).toBeGreaterThan(0);
     });
   });
 
@@ -223,6 +293,36 @@ describe('Slots API (e2e)', () => {
         expect(conflict).toHaveProperty('end');
         expect(conflict).toHaveProperty('resourceId');
       }
+    });
+
+    it('should allow updating a slot to its current time range (self-exclusion)', async () => {
+      const current = await request(app.getHttpServer())
+        .get('/slots')
+        .expect(200);
+
+      const allSlots = (current.body as ResourceSlotsDto[]).flatMap(
+        (rs) => rs.slots,
+      );
+      const thisSlot = allSlots.find((s) => s.id === slotId);
+      expect(thisSlot).toBeDefined();
+
+      await request(app.getHttpServer())
+        .put(`/slots/${slotId}`)
+        .send({
+          start: thisSlot!.start,
+          end: thisSlot!.end,
+        })
+        .expect(200);
+    });
+
+    it('should return 404 for a non-existent slot', async () => {
+      await request(app.getHttpServer())
+        .put('/slots/999999')
+        .send({
+          start: dt('10:00:00'),
+          end: dt('11:00:00'),
+        })
+        .expect(404);
     });
   });
 });

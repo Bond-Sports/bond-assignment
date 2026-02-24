@@ -6,12 +6,8 @@ import { ResourcesModule } from './resources/resources.module';
 @Module({
   imports: [
     TypeOrmModule.forRoot({
-      type: 'postgres',
-      host: 'localhost',
-      port: 5432,
-      username: 'bond',
-      password: 'bond',
-      database: 'bond',
+      type: 'better-sqlite3',
+      database: 'bond.sqlite',
       autoLoadEntities: true,
       synchronize: true,
     }),

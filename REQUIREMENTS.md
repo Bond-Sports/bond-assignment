@@ -147,23 +147,19 @@ Creates a new slot. Should validate the slot and **reject with 409 Conflict** if
 
 **Response (201):** the created `SlotDto` with its `conflicts` array.
 
-**Response (409):** if the proposed slot conflicts with existing bookings. The response body includes the conflicting slots:
+**Response (409):** if the proposed slot conflicts with existing bookings. The response body is an array of conflicting slots:
 
 ```json
-{
-  "statusCode": 409,
-  "message": "Slot conflicts with existing bookings",
-  "conflicts": [
-    {
-      "id": 2,
-      "name": "Aqua Aerobics Class",
-      "start": "2026-02-23T09:30:00",
-      "end": "2026-02-23T11:00:00",
-      "resourceId": 1,
-      "conflicts": []
-    }
-  ]
-}
+[
+  {
+    "id": 2,
+    "name": "Aqua Aerobics Class",
+    "start": "2026-02-23T09:30:00",
+    "end": "2026-02-23T11:00:00",
+    "resourceId": 1,
+    "conflicts": []
+  }
+]
 ```
 
 ### `PUT /slots/:slotId`
@@ -181,7 +177,7 @@ Updates the start and end times of an existing slot. Should validate the new tim
 
 **Response (200):** the updated `SlotDto` with its `conflicts` array.
 
-**Response (409):** if the new times conflict with existing bookings. The response body includes the conflicting slots (same shape as the POST 409 response).
+**Response (409):** if the new times conflict with existing bookings. The response body is an array of conflicting slots (same format as the POST 409 response).
 
 ---
 
@@ -196,7 +192,7 @@ Updates the start and end times of an existing slot. Should validate the new tim
 - Auto-seed on startup: database file is deleted, recreated, and seeded every time the server starts
 - Standalone seed script: `npm run seed` — also available for manual use
 - E2E test suite covering all three endpoints
-- Empty `client/` folder for future frontend
+- React calendar UI in `client/` for visual testing (not part of the assignment)
 
 ---
 
@@ -226,12 +222,22 @@ npm run test:e2e
 ```bash
 cd server
 
-# Start the server (DB file is deleted, recreated, and seeded on each startup)
+# Start the server (DB is recreated and seeded on each startup)
 npm run start:dev
 
-# Run e2e tests (DB file is deleted, recreated, and seeded before tests)
+# Run e2e tests (DB is recreated and seeded before tests)
 npm run test:e2e
 
 # Manual seed (optional, for standalone use)
 npm run seed
+```
+
+### Client (optional, for visual testing)
+
+A React calendar UI is provided in `client/`. It connects to the server and displays today's schedule. It is **not** part of the assignment — use it to visually verify your API.
+
+```bash
+cd client
+npm install
+npm run dev
 ```

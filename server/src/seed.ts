@@ -10,12 +10,8 @@ import {
 
 export async function seed(): Promise<void> {
   const dataSource = new DataSource({
-    type: 'postgres',
-    host: 'localhost',
-    port: 5432,
-    username: 'bond',
-    password: 'bond',
-    database: 'bond',
+    type: 'better-sqlite3',
+    database: 'bond.sqlite',
     entities: [Resource, BlockingDependency, Slot],
     synchronize: true,
   });
@@ -26,9 +22,9 @@ export async function seed(): Promise<void> {
   const depRepo = dataSource.getRepository(BlockingDependency);
   const slotRepo = dataSource.getRepository(Slot);
 
-  await resourceRepo.query('TRUNCATE TABLE "Resources" CASCADE');
-  await depRepo.query('TRUNCATE TABLE "BlockingDependencies" CASCADE');
-  await slotRepo.query('TRUNCATE TABLE "Slots" CASCADE');
+  await slotRepo.clear();
+  await depRepo.clear();
+  await resourceRepo.clear();
 
   const resourceMap = new Map<string, number>();
   for (const r of getSeedResources()) {
