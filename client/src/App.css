@@ -1,0 +1,23 @@
+.app {
+  min-height: 100vh;
+  background: #f0f2f5;
+}
+
+.app-header {
+  padding: 24px 24px 0;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #1a1a2e;
+}
+
+.app-header p {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: #888;
+}

@@ -1,0 +1,120 @@
+.calendar {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.calendar-grid {
+  display: grid;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+/* Header row */
+.time-header,
+.resource-header {
+  padding: 12px 8px;
+  font-weight: 600;
+  font-size: 14px;
+  text-align: center;
+  background: #f5f7fa;
+  border-bottom: 2px solid #e0e0e0;
+  color: #333;
+}
+
+.time-header {
+  border-right: 1px solid #e0e0e0;
+}
+
+/* Time axis */
+.time-axis {
+  position: relative;
+  height: 1440px;
+  border-right: 1px solid #e0e0e0;
+  background: #f9fafb;
+}
+
+.time-label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: #888;
+  text-align: center;
+  pointer-events: none;
+  line-height: 1;
+}
+
+/* Resource columns */
+.resource-column {
+  position: relative;
+  height: 1440px;
+  border-right: 1px solid #f0f0f0;
+}
+
+.resource-column:last-child {
+  border-right: none;
+}
+
+/* Resource header inside ResourceColumn is hidden (header is in the grid) */
+.resource-column > .resource-header {
+  display: none;
+}
+
+.resource-body {
+  position: relative;
+  height: 100%;
+}
+
+/* Hour gridlines */
+.resource-column::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent calc(100% / 24 - 1px),
+    #f0f0f0 calc(100% / 24 - 1px),
+    #f0f0f0 calc(100% / 24)
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Floating add button */
+.fab-add {
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  background: #5b7ff5;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(91, 127, 245, 0.4);
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+  z-index: 50;
+}
+
+.fab-add:hover {
+  background: #4a6de0;
+  transform: scale(1.08);
+}
+
+/* Error state */
+.calendar-error {
+  text-align: center;
+  padding: 48px 24px;
+  color: #c0392b;
+  font-size: 16px;
+}
