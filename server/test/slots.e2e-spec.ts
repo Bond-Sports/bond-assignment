@@ -26,6 +26,9 @@ describe('Slots API (e2e)', () => {
   let app: INestApplication<App>;
   let poolId: number;
   let lane1Id: number;
+  let lane2Id: number;
+  let lane3Id: number;
+  let lane4Id: number;
 
   beforeAll(async () => {
     await seed();
@@ -52,6 +55,9 @@ describe('Slots API (e2e)', () => {
     for (const r of resources) {
       if (r.name === 'Pool') poolId = r.id;
       if (r.name === 'Lane 1') lane1Id = r.id;
+      if (r.name === 'Lane 2') lane2Id = r.id;
+      if (r.name === 'Lane 3') lane3Id = r.id;
+      if (r.name === 'Lane 4') lane4Id = r.id;
     }
   });
 
@@ -72,7 +78,9 @@ describe('Slots API (e2e)', () => {
     });
 
     it('should return one entry per resource', () => {
-      expect(resourceSlots.length).toBeGreaterThan(0);
+      const resourceIds = new Set(resourceSlots.map((rs) => rs.resourceId));
+      expect(resourceIds.size).toBe(5);
+      expect(resourceSlots.length).toBe(resourceIds.size);
       for (const entry of resourceSlots) {
         expect(entry).toHaveProperty('resourceId');
         expect(entry).toHaveProperty('slots');
@@ -159,6 +167,35 @@ describe('Slots API (e2e)', () => {
         s.conflicts?.some((c) => c.resourceId === lane1Id),
       );
       expect(hasLane1Conflict).toBe(false);
+    });
+
+    it('should only include conflicts from the same resource or blocking resources', () => {
+      const lane1Entry = resourceSlots.find((rs) => rs.resourceId === lane1Id);
+      const lane1OwnSlots = lane1Entry!.slots.filter(
+        (s) => s.resourceId === lane1Id,
+      );
+      for (const slot of lane1OwnSlots) {
+        for (const conflict of slot.conflicts ?? []) {
+          const isRelevant =
+            conflict.resourceId === lane1Id ||
+            conflict.resourceId === poolId;
+          expect(isRelevant).toBe(true);
+        }
+      }
+
+      const lane2Entry = resourceSlots.find((rs) => rs.resourceId === lane2Id);
+      const lane2OwnSlots = lane2Entry!.slots.filter(
+        (s) => s.resourceId === lane2Id,
+      );
+      for (const slot of lane2OwnSlots) {
+        for (const conflict of slot.conflicts ?? []) {
+          const isRelevant =
+            conflict.resourceId === lane2Id ||
+            conflict.resourceId === poolId ||
+            conflict.resourceId === lane3Id;
+          expect(isRelevant).toBe(true);
+        }
+      }
     });
   });
 
@@ -323,6 +360,38 @@ describe('Slots API (e2e)', () => {
           end: dt('11:00:00'),
         })
         .expect(404);
+    });
+  });
+
+  // ─── GET /slots — edge cases ────────────────────────────────────────
+
+  describe('GET /slots — resource with no own slots (Lane 4)', () => {
+    it('should include an entry for Lane 4 even though it has no own slots', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/slots')
+        .expect(200);
+
+      const body = response.body as ResourceSlotsDto[];
+      const lane4Entry = body.find((rs) => rs.resourceId === lane4Id);
+
+      expect(lane4Entry).toBeDefined();
+    });
+
+    it('should show Pool (blocker) slots inside Lane 4 entry', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/slots')
+        .expect(200);
+
+      const body = response.body as ResourceSlotsDto[];
+      const lane4Entry = body.find((rs) => rs.resourceId === lane4Id);
+
+      expect(lane4Entry).toBeDefined();
+      expect(lane4Entry!.slots.length).toBeGreaterThan(0);
+
+      const poolSlotsInLane4 = lane4Entry!.slots.filter(
+        (s) => s.resourceId === poolId,
+      );
+      expect(poolSlotsInLane4.length).toBeGreaterThan(0);
     });
   });
 });

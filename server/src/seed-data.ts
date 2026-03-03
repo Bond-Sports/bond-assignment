@@ -45,6 +45,7 @@ export function getSeedResources(): SeedResource[] {
     { name: 'Lane 1' },
     { name: 'Lane 2' },
     { name: 'Lane 3' },
+    { name: 'Lane 4' },
   ];
 }
 
@@ -53,6 +54,7 @@ export function getSeedDependencies(): SeedDependency[] {
     { blockingName: 'Pool', blockedName: 'Lane 1' },
     { blockingName: 'Pool', blockedName: 'Lane 2' },
     { blockingName: 'Pool', blockedName: 'Lane 3' },
+    { blockingName: 'Pool', blockedName: 'Lane 4' },
     { blockingName: 'Lane 3', blockedName: 'Lane 2' },
     { blockingName: 'Lane 2', blockedName: 'Lane 3' },
   ];
