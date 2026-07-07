@@ -85,22 +85,25 @@ grep -rl 'bond-assignment' ~/Library/Application\ Support/Cursor/User/History/*/
   | xargs -I{} dirname {} | xargs rm -rf
 ```
 
-Then delete the local clone itself (the work is safely on the remote):
+Then delete the local clone and re-clone a fresh copy on `main` so the next candidate has a clean starting point:
 
 ```bash
 cd ~ && rm -rf ~/Documents/GitHub/bond-assignment
+git clone https://github.com/Bond-Sports/bond-assignment.git ~/Documents/GitHub/bond-assignment
 ```
+
+The fresh clone stays on `main` with no candidate branches checked out.
 
 Optionally clear shell history entries from this session: `history -p` in zsh, or truncate `~/.zsh_history` if the user asks for it.
 
 ## Phase 5: Verify cleanup
 
 ```bash
-ls ~/Documents/GitHub/ 2>/dev/null
 ls ~/.cursor/projects/ 2>/dev/null
 ls ~/.cursor/plans ~/.cursor/agents 2>/dev/null
+cd ~/Documents/GitHub/bond-assignment && git branch --show-current && git status --short
 ```
 
-No `bond-assignment` entries should remain anywhere.
+No `bond-assignment` traces should remain in Cursor data, and the fresh clone must be on `main` with a clean working tree.
 
 Finally, tell the user to **quit Cursor completely without reopening the workspace** — Cursor may rewrite open-chat state to disk on exit, and the current chat window still shows the conversation until the app is closed.
