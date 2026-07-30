@@ -18,34 +18,34 @@ export class SlotsService {
     // TODO: Implement this method.
     // Return today's slots grouped by resource, including slots from
     // blocking resources. Each slot should have its conflicts computed.
-    const slots = await this.manager.find(Slot, {
-      order: { id: 'ASC' },
-    });
+    const [resources, slots, dependencies] = await Promise.all([
+      this.manager.find(Resource, { order: { id: 'ASC' } }),
+      this.manager.find(Slot, { order: { id: 'ASC' } }),
+      this.manager.find(BlockingDependency),
+    ]);
 
-    const result: ResourceSlotsDto[] = [];
-
-    for (const slot of slots) {
-      let resource = result.find((r) => r.resourceId === slot.resourceId);
-
-      if (!resource) {
-        resource = {
-          resourceId: slot.resourceId,
-          slots: [],
-        };
-        result.push(resource);
-      }
-
-      const conflicts = slots.filter(
-        (other) =>
-          other.id !== slot.id &&
-          other.resourceId === slot.resourceId &&
-          this.isConflict(slot, other),
+    const results = resources.map((resource) => {
+      const blockingResourceIds = this.getBlockingResourceIds(
+        resource.id,
+        dependencies,
       );
 
-      resource.slots.push({ ...slot, conflicts });
-    }
+      return {
+        resourceId: resource.id,
+        slots: slots
+          .filter(
+            (slot) =>
+              slot.resourceId === resource.id ||
+              blockingResourceIds.includes(slot.resourceId),
+          )
+          .map((slot) => ({
+            ...slot,
+            conflicts: this.findConflicts(slot, slots, dependencies),
+          })),
+      };
+    });
 
-    return result;
+    return results;
   }
 
   async addSlot(createSlot: CreateSlotDto): Promise<SlotDto> {
@@ -88,5 +88,33 @@ export class SlotsService {
     other: Pick<Slot, 'start' | 'end'>,
   ): boolean {
     return slot.start < other.end && other.start < slot.end;
+  }
+
+  private findConflicts(
+    slot: Slot,
+    slots: Slot[],
+    dependencies: BlockingDependency[],
+  ): Slot[] {
+    const blockingResourceIds = this.getBlockingResourceIds(
+      slot.resourceId,
+      dependencies,
+    );
+
+    return slots.filter(
+      (other) =>
+        other.id !== slot.id &&
+        (other.resourceId === slot.resourceId ||
+          blockingResourceIds.includes(other.resourceId)) &&
+        this.isConflict(slot, other),
+    );
+  }
+
+  private getBlockingResourceIds(
+    resourceId: number,
+    dependencies: BlockingDependency[],
+  ): number[] {
+    return dependencies
+      .filter((dependency) => dependency.blockedResourceId === resourceId)
+      .map((dependency) => dependency.blockingResourceId);
   }
 }
