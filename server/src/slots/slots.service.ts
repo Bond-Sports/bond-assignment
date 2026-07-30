@@ -1,4 +1,4 @@
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Slot } from 'src/entities/slot.entity';
 import { BlockingDependency } from 'src/entities/blocking-dependency.entity';
 import { EntityManager } from 'typeorm';
@@ -24,28 +24,39 @@ export class SlotsService {
       this.manager.find(BlockingDependency),
     ]);
 
-    const results = resources.map((resource) => {
-      const blockingResourceIds = this.getBlockingResourceIds(
-        resource.id,
-        dependencies,
+    const blockingResourceIdsByResource = new Map<number, Set<number>>();
+
+    for (const dependency of dependencies) {
+      const blockingResourceIds =
+        blockingResourceIdsByResource.get(dependency.blockedResourceId) ??
+        new Set<number>();
+
+      blockingResourceIds.add(dependency.blockingResourceId);
+      blockingResourceIdsByResource.set(
+        dependency.blockedResourceId,
+        blockingResourceIds,
       );
+    }
 
-      return {
-        resourceId: resource.id,
-        slots: slots
-          .filter(
-            (slot) =>
-              slot.resourceId === resource.id ||
-              blockingResourceIds.includes(slot.resourceId),
-          )
-          .map((slot) => ({
-            ...slot,
-            conflicts: this.findConflicts(slot, slots, dependencies),
-          })),
-      };
-    });
+    const slotsByResource = new Map<number, Slot[]>();
 
-    return results;
+    for (const slot of slots) {
+      const resourceSlots = slotsByResource.get(slot.resourceId) ?? [];
+
+      resourceSlots.push(slot);
+      slotsByResource.set(slot.resourceId, resourceSlots);
+    }
+
+    const conflictsBySlotId = new Map<number, Slot[]>();
+
+    return resources.map((resource) =>
+      this.getResourceSlots(
+        resource.id,
+        slotsByResource,
+        blockingResourceIdsByResource,
+        conflictsBySlotId,
+      ),
+    );
   }
 
   async addSlot(createSlot: CreateSlotDto): Promise<SlotDto> {
@@ -90,31 +101,57 @@ export class SlotsService {
     return slot.start < other.end && other.start < slot.end;
   }
 
-  private findConflicts(
+  private getConflicts(
     slot: Slot,
-    slots: Slot[],
-    dependencies: BlockingDependency[],
+    slotsByResource: Map<number, Slot[]>,
+    blockingResourceIdsByResource: Map<number, Set<number>>,
+    conflictsBySlotId: Map<number, Slot[]>,
   ): Slot[] {
-    const blockingResourceIds = this.getBlockingResourceIds(
-      slot.resourceId,
-      dependencies,
-    );
+    const cachedConflicts = conflictsBySlotId.get(slot.id);
 
-    return slots.filter(
-      (other) =>
-        other.id !== slot.id &&
-        (other.resourceId === slot.resourceId ||
-          blockingResourceIds.includes(other.resourceId)) &&
-        this.isConflict(slot, other),
-    );
+    if (cachedConflicts !== undefined) {
+      return cachedConflicts;
+    }
+
+    const relevantResourceIds = new Set([
+      slot.resourceId,
+      ...(blockingResourceIdsByResource.get(slot.resourceId) ?? []),
+    ]);
+
+    const conflicts = [...relevantResourceIds]
+      .flatMap((resourceId) => slotsByResource.get(resourceId) ?? [])
+      .filter((other) => other.id !== slot.id && this.isConflict(slot, other));
+
+    conflictsBySlotId.set(slot.id, conflicts);
+
+    return conflicts;
   }
 
-  private getBlockingResourceIds(
+  private getResourceSlots(
     resourceId: number,
-    dependencies: BlockingDependency[],
-  ): number[] {
-    return dependencies
-      .filter((dependency) => dependency.blockedResourceId === resourceId)
-      .map((dependency) => dependency.blockingResourceId);
+    slotsByResource: Map<number, Slot[]>,
+    blockingResourceIdsByResource: Map<number, Set<number>>,
+    conflictsBySlotId: Map<number, Slot[]>,
+  ): ResourceSlotsDto {
+    const relevantResourceIds = new Set([
+      resourceId,
+      ...(blockingResourceIdsByResource.get(resourceId) ?? []),
+    ]);
+    const resourceSlots = [...relevantResourceIds].flatMap(
+      (id) => slotsByResource.get(id) ?? [],
+    );
+
+    return {
+      resourceId,
+      slots: resourceSlots.map((slot) => ({
+        ...slot,
+        conflicts: this.getConflicts(
+          slot,
+          slotsByResource,
+          blockingResourceIdsByResource,
+          conflictsBySlotId,
+        ),
+      })),
+    };
   }
 }
