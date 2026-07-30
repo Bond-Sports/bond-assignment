@@ -35,7 +35,14 @@ export class SlotsService {
         result.push(resource);
       }
 
-      resource.slots.push({ ...slot, conflicts: [] });
+      const conflicts = slots.filter(
+        (other) =>
+          other.id !== slot.id &&
+          other.resourceId === slot.resourceId &&
+          this.isConflict(slot, other),
+      );
+
+      resource.slots.push({ ...slot, conflicts });
     }
 
     return result;
@@ -74,5 +81,12 @@ export class SlotsService {
       ...slot,
       conflicts: [],
     };
+  }
+
+  private isConflict(
+    slot: Pick<Slot, 'start' | 'end'>,
+    other: Pick<Slot, 'start' | 'end'>,
+  ): boolean {
+    return slot.start < other.end && other.start < slot.end;
   }
 }

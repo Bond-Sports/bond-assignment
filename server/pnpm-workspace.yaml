@@ -1,0 +1,4 @@
+allowBuilds:
+  '@scarf/scarf': true
+  better-sqlite3: true
+  unrs-resolver: true
