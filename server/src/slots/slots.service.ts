@@ -15,30 +15,68 @@ export class SlotsService {
   constructor(private readonly manager: EntityManager) {}
 
   async getSlots(): Promise<ResourceSlotsDto[]> {
-    // TODO: Implement this method.
-    // Return today's slots grouped by resource, including slots from
-    // blocking resources. Each slot should have its conflicts computed.
-    const slots = await this.manager.find(Slot, {
-      order: { id: 'ASC' },
-    });
+    const [slots, dependencies] = await Promise.all([
+      this.manager.find(Slot, { order: { id: 'ASC' } }),
+      this.manager.find(BlockingDependency),
+    ]);
 
-    const result: ResourceSlotsDto[] = [];
+    const groups = new Map<number, SlotDto[]>();
 
     for (const slot of slots) {
-      let resource = result.find((r) => r.resourceId === slot.resourceId);
+      const resourceIds = [slot.resourceId];
 
-      if (!resource) {
-        resource = {
-          resourceId: slot.resourceId,
-          slots: [],
-        };
-        result.push(resource);
+      for (const dep of dependencies) {
+        if (dep.blockingResourceId === slot.resourceId) {
+          resourceIds.push(dep.blockedResourceId);
+        }
       }
 
-      resource.slots.push({ ...slot, conflicts: [] });
+      for (const resourceId of resourceIds) {
+        const group = groups.get(resourceId) ?? [];
+        group.push({ ...slot, conflicts: [] });
+        groups.set(resourceId, group);
+      }
     }
 
-    return result;
+    const conflictIds = new Map<number, Set<number>>();
+
+    for (const group of groups.values()) {
+      const ordered = [...group].sort((a, b) =>
+        a.start === b.start ? a.id - b.id : a.start < b.start ? -1 : 1,
+      );
+
+      for (let i = 0; i < ordered.length; i++) {
+        const slot = ordered[i];
+
+        for (let j = i + 1; j < ordered.length; j++) {
+          const other = ordered[j];
+          if (other.start >= slot.end) {
+            break;
+          }
+
+          const fromSlot = conflictIds.get(slot.id) ?? new Set<number>();
+          fromSlot.add(other.id);
+          conflictIds.set(slot.id, fromSlot);
+
+          const fromOther = conflictIds.get(other.id) ?? new Set<number>();
+          fromOther.add(slot.id);
+          conflictIds.set(other.id, fromOther);
+        }
+      }
+    }
+
+    const slotById = new Map(slots.map((slot) => [slot.id, slot]));
+
+    return [...groups.entries()].map(([resourceId, group]) => ({
+      resourceId,
+      slots: group.map((slot) => ({
+        ...slot,
+        conflicts: [...(conflictIds.get(slot.id) ?? [])]
+          .map((id) => slotById.get(id))
+          .filter((other): other is Slot => other !== undefined)
+          .map((other) => ({ ...other, conflicts: [] })),
+      })),
+    }));
   }
 
   async addSlot(createSlot: CreateSlotDto): Promise<SlotDto> {
