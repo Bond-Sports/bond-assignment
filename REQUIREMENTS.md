@@ -219,10 +219,23 @@ npm run test:e2e
 
 ## Running the Project
 
+Install dependencies and start the API + client with one command from the repo root:
+
+```bash
+./start.sh
+```
+
+That installs `server/` and `client/` packages, rebuilds SQLite native bindings if needed, then starts:
+
+- API: http://localhost:3000 (Swagger at http://localhost:3000/api)
+- Client: http://localhost:4200
+
+Press Ctrl+C to stop both.
+
 ```bash
 cd server
 
-# Start the server (DB is recreated and seeded on each startup)
+# Start only the API (DB is recreated and seeded on each startup)
 npm run start:dev
 
 # Run e2e tests (DB is recreated and seeded before tests)
@@ -230,14 +243,4 @@ npm run test:e2e
 
 # Manual seed (optional, for standalone use)
 npm run seed
-```
-
-### Client (optional, for visual testing)
-
-A React calendar UI is provided in `client/`. It connects to the server and displays today's schedule. It is **not** part of the assignment — use it to visually verify your API.
-
-```bash
-cd client
-npm install
-npm run dev
 ```
