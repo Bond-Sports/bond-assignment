@@ -15,30 +15,99 @@ export class SlotsService {
   constructor(private readonly manager: EntityManager) {}
 
   async getSlots(): Promise<ResourceSlotsDto[]> {
-    // TODO: Implement this method.
-    // Return today's slots grouped by resource, including slots from
-    // blocking resources. Each slot should have its conflicts computed.
-    const slots = await this.manager.find(Slot, {
-      order: { id: 'ASC' },
-    });
+    const [slots, blockingDependencies] = await Promise.all([
+      this.manager.find(Slot, {
+        order: { id: 'ASC' },
+      }),
+      this.manager.find(BlockingDependency),
+    ]);
 
-    const result: ResourceSlotsDto[] = [];
-
+    const slotsByResource = new Map<number, Slot[]>();
     for (const slot of slots) {
-      let resource = result.find((r) => r.resourceId === slot.resourceId);
-
-      if (!resource) {
-        resource = {
-          resourceId: slot.resourceId,
-          slots: [],
-        };
-        result.push(resource);
-      }
-
-      resource.slots.push({ ...slot, conflicts: [] });
+      const group = slotsByResource.get(slot.resourceId) ?? [];
+      group.push(slot);
+      slotsByResource.set(slot.resourceId, group);
     }
 
-    return result;
+    const blockingIdsByResource = new Map<number, Set<number>>();
+    const blockedIdsByBlockingResource = new Map<number, Set<number>>();
+    for (const dependency of blockingDependencies) {
+      let blockingIds = blockingIdsByResource.get(dependency.blockedResourceId);
+      if (!blockingIds) {
+        blockingIds = new Set();
+        blockingIdsByResource.set(dependency.blockedResourceId, blockingIds);
+      }
+      blockingIds.add(dependency.blockingResourceId);
+
+      let blockedIds = blockedIdsByBlockingResource.get(
+        dependency.blockingResourceId,
+      );
+      if (!blockedIds) {
+        blockedIds = new Set();
+        blockedIdsByBlockingResource.set(
+          dependency.blockingResourceId,
+          blockedIds,
+        );
+      }
+      blockedIds.add(dependency.blockedResourceId);
+    }
+
+    const resourceIds = new Set<number>(slotsByResource.keys());
+    for (const blockedResourceId of blockingIdsByResource.keys()) {
+      resourceIds.add(blockedResourceId);
+    }
+
+    return [...resourceIds]
+      .sort((a, b) => a - b)
+      .map((resourceId) => {
+      const blockingIds = blockingIdsByResource.get(resourceId) ?? new Set();
+      const relevantSlots = [
+        ...(slotsByResource.get(resourceId) ?? []),
+        ...[...blockingIds].flatMap(
+          (blockingId) => slotsByResource.get(blockingId) ?? [],
+        ),
+      ];
+
+      return {
+        resourceId,
+        slots: relevantSlots.map((slot) => {
+          const conflicts = this.buildConflicts(
+            slot,
+            resourceId,
+            slotsByResource,
+            blockingIdsByResource,
+          );
+
+          if (slot.resourceId === resourceId) {
+            const blockedIds =
+              blockedIdsByBlockingResource.get(slot.resourceId) ?? new Set();
+            const conflictIds = new Set(conflicts.map((conflict) => conflict.id));
+            for (const blockedId of blockedIds) {
+              for (const other of slotsByResource.get(blockedId) ?? []) {
+                if (
+                  other.id === slot.id ||
+                  conflictIds.has(other.id) ||
+                  other.start >= slot.end ||
+                  other.end <= slot.start
+                ) {
+                  continue;
+                }
+                conflicts.push({
+                  id: other.id,
+                  name: other.name,
+                  start: other.start,
+                  end: other.end,
+                  resourceId: other.resourceId,
+                });
+                conflictIds.add(other.id);
+              }
+            }
+          }
+
+          return { ...slot, conflicts };
+        }),
+      };
+    });
   }
 
   async addSlot(createSlot: CreateSlotDto): Promise<SlotDto> {
@@ -74,5 +143,52 @@ export class SlotsService {
       ...slot,
       conflicts: [],
     };
+  }
+
+  /**
+   * Conflicts are overlapping slots on the same resource, on resources that
+   * block this slot, and — when this slot is a blocker of the current group —
+   * the original overlapping slots of that blocked resource.
+   */
+  private buildConflicts(
+    slot: Slot,
+    groupResourceId: number,
+    slotsByResource: Map<number, Slot[]>,
+    blockingIdsByResource: Map<number, Set<number>>,
+  ): SlotDto[] {
+    const slotBlockingIds =
+      blockingIdsByResource.get(slot.resourceId) ?? new Set();
+    const groupBlockingIds =
+      blockingIdsByResource.get(groupResourceId) ?? new Set();
+    const candidatesById = new Map<number, Slot>();
+
+    const addCandidates = (candidates: Slot[]): void => {
+      for (const candidate of candidates) {
+        candidatesById.set(candidate.id, candidate);
+      }
+    };
+
+    addCandidates(slotsByResource.get(slot.resourceId) ?? []);
+    for (const blockingId of slotBlockingIds) {
+      addCandidates(slotsByResource.get(blockingId) ?? []);
+    }
+    if (groupBlockingIds.has(slot.resourceId)) {
+      addCandidates(slotsByResource.get(groupResourceId) ?? []);
+    }
+
+    return [...candidatesById.values()]
+      .filter(
+        (other) =>
+          other.id !== slot.id &&
+          other.start < slot.end &&
+          other.end > slot.start,
+      )
+      .map((other) => ({
+        id: other.id,
+        name: other.name,
+        start: other.start,
+        end: other.end,
+        resourceId: other.resourceId,
+      }));
   }
 }
