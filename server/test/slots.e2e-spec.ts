@@ -250,7 +250,7 @@ describe('Slots API (e2e)', () => {
         .send({
           name: 'Adjacent Slot',
           start: dt('08:00:00'),
-          end: dt('08:15:00'),
+          end: dt('09:00:00'),
           resourceId: poolId,
         })
         .expect(201);
@@ -258,6 +258,7 @@ describe('Slots API (e2e)', () => {
       const body = response.body as SlotDto;
       expect(body.name).toBe('Adjacent Slot');
       expect(body.start).toBe(dt('08:00:00'));
+      expect(body.end).toBe(dt('09:00:00'));
     });
 
     it('should include cross-resource conflicts from blocking resources in 409', async () => {
