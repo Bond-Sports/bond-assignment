@@ -1,0 +1,3 @@
+{"role":"user","message":{"content":[{"type":"text","text":"<timestamp>Tuesday, Oct 6, 2026, 10:59 AM (UTC+3)</timestamp>\n<user_query>\nrun the project\n</user_query>"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"I'll look at how this project is set up so I can start it the right way."},{"type":"tool_use","name":"Glob","input":{"glob_pattern":"package.json"}},{"type":"tool_use","name":"Glob","input":{"glob_pattern":"README*"}},{"type":"tool_use","name":"Glob","input":{"glob_pattern":"docker-compose*"}},{"type":"tool_use","name":"Glob","input":{"glob_pattern":"*.md"}}]}}
+{"type":"turn_ended","status":"error","error":"User aborted request"}
