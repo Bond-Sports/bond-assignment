@@ -30,7 +30,7 @@ export class SlotsService {
               'end', end,
               'resourceId', resource_id,
               'conflicts', json('[]')
-            ) ORDER BY id
+            ) ORDER BY start, id
           ) AS slots
         FROM Slots
         GROUP BY resource_id
@@ -39,7 +39,7 @@ export class SlotsService {
 
     return rows.map((row) => ({
       resourceId: row.resourceId,
-      slots: JSON.parse(row.slots),
+      slots: annotateConflicts(JSON.parse(row.slots) as SlotDto[]),
     }));
   }
 
@@ -77,4 +77,19 @@ export class SlotsService {
       conflicts: [],
     };
   }
+}
+
+// Expects slots sorted by start time.
+function annotateConflicts(slots: SlotDto[]): SlotDto[] {
+  let active: SlotDto[] = [];
+  for (const slot of slots) {
+    active = active.filter((other) => other.end > slot.start);
+    for (const other of active) {
+      slot.conflicts!.push({ ...other, conflicts: [] });
+      other.conflicts!.push({ ...slot, conflicts: [] });
+    }
+    active.push(slot);
+  }
+
+  return slots;
 }
