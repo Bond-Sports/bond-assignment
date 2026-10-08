@@ -35,15 +35,31 @@ export class SlotsService {
       blockingIdsByResource.set(blockedResourceId, ids);
     }
 
-    return resources.map(({ id, slots }) => {
+    const resourcesWithConflicts = resources.map(({ id, slots }) => {
       const blockingSlots = (blockingIdsByResource.get(id) ?? []).flatMap(
         (blockingId) => slotsByResource.get(blockingId) ?? [],
       );
       return {
         resourceId: id,
-        slots: annotateConflicts(slots, blockingSlots).concat(blockingSlots.map((s) => ({ ...s, conflicts: [] }))),
+        slots: annotateConflicts(slots, blockingSlots),
       };
     });
+
+    const annotatedSlotsByResource = new Map(
+      resourcesWithConflicts.map((resource) => [
+        resource.resourceId,
+        resource.slots,
+      ]),
+    );
+
+    return resourcesWithConflicts.map(({ resourceId, slots }) => ({
+      resourceId,
+      slots: slots.concat(
+        (blockingIdsByResource.get(resourceId) ?? []).flatMap(
+          (blockingId) => annotatedSlotsByResource.get(blockingId) ?? [],
+        ),
+      ),
+    }));
   }
 
   async addSlot(createSlot: CreateSlotDto): Promise<SlotDto> {
