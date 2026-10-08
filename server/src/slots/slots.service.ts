@@ -18,27 +18,29 @@ export class SlotsService {
     // TODO: Implement this method.
     // Return today's slots grouped by resource, including slots from
     // blocking resources. Each slot should have its conflicts computed.
-    const slots = await this.manager.find(Slot, {
-      order: { id: 'ASC' },
-    });
+    const rows: { resourceId: number; slots: string }[] =
+      await this.manager.query(`
+        SELECT
+          resource_id AS resourceId,
+          json_group_array(
+            json_object(
+              'id', id,
+              'name', name,
+              'start', start,
+              'end', end,
+              'resourceId', resource_id,
+              'conflicts', json('[]')
+            ) ORDER BY id
+          ) AS slots
+        FROM Slots
+        GROUP BY resource_id
+        ORDER BY MIN(id)
+      `);
 
-    const result: ResourceSlotsDto[] = [];
-
-    for (const slot of slots) {
-      let resource = result.find((r) => r.resourceId === slot.resourceId);
-
-      if (!resource) {
-        resource = {
-          resourceId: slot.resourceId,
-          slots: [],
-        };
-        result.push(resource);
-      }
-
-      resource.slots.push({ ...slot, conflicts: [] });
-    }
-
-    return result;
+    return rows.map((row) => ({
+      resourceId: row.resourceId,
+      slots: JSON.parse(row.slots),
+    }));
   }
 
   async addSlot(createSlot: CreateSlotDto): Promise<SlotDto> {
