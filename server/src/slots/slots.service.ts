@@ -87,16 +87,18 @@ function annotateConflicts(slots: Slot[], blockingSlots: Slot[]): SlotDto[] {
   }));
 
   let active: SlotDto[] = [];
+  let blockers = blockingSlots;
   for (const slot of annotated) {
     active = active.filter((other) => other.end > slot.start);
+    blockers = blockers.filter((other) => other.end > slot.start);
     for (const other of active) {
       slot.conflicts!.push({ ...other, conflicts: [] });
       other.conflicts!.push({ ...slot, conflicts: [] });
     }
     active.push(slot);
 
-    for (const blocking of blockingSlots) {
-      if (blocking.start < slot.end && blocking.end > slot.start) {
+    for (const blocking of blockers) {
+      if (blocking.start < slot.end) {
         slot.conflicts!.push({ ...blocking, conflicts: [] });
       }
     }
