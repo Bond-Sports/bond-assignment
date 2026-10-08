@@ -41,7 +41,7 @@ export class SlotsService {
       );
       return {
         resourceId: id,
-        slots: annotateConflicts(slots, blockingSlots),
+        slots: annotateConflicts(slots, blockingSlots).concat(blockingSlots.map((s) => ({ ...s, conflicts: [] }))),
       };
     });
   }
