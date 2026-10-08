@@ -18,28 +18,55 @@ export class SlotsService {
     // TODO: Implement this method.
     // Return today's slots grouped by resource, including slots from
     // blocking resources. Each slot should have its conflicts computed.
-    const rows: { resourceId: number; slots: string }[] =
-      await this.manager.query(`
+    const [rows, blockers] = await Promise.all([
+      this.manager.query<{ resourceId: number; slots: string }[]>(`
         SELECT
-          resource_id AS resourceId,
-          json_group_array(
-            json_object(
-              'id', id,
-              'name', name,
-              'start', start,
-              'end', end,
-              'resourceId', resource_id,
-              'conflicts', json('[]')
-            ) ORDER BY start, id
+          r.id AS resourceId,
+          COALESCE(
+            json_group_array(
+              json_object(
+                'id', s.id,
+                'name', s.name,
+                'start', s.start,
+                'end', s.end,
+                'resourceId', s.resource_id,
+                'conflicts', json('[]')
+              ) ORDER BY s.start, s.id
+            ) FILTER (WHERE s.id IS NOT NULL),
+            '[]'
           ) AS slots
-        FROM Slots
-        GROUP BY resource_id
-        ORDER BY MIN(id)
-      `);
+        FROM Resources r
+        LEFT JOIN Slots s ON s.resource_id = r.id
+        GROUP BY r.id
+        ORDER BY r.id
+      `),
+      this.manager.query<{ resourceId: number; blockingIds: string }[]>(`
+        SELECT
+          blocked_resource_id AS resourceId,
+          json_group_array(blocking_resource_id) AS blockingIds
+        FROM BlockingDependencies
+        GROUP BY blocked_resource_id
+      `),
+    ]);
 
-    return rows.map((row) => ({
-      resourceId: row.resourceId,
-      slots: annotateConflicts(JSON.parse(row.slots) as SlotDto[]),
+    const slotsByResource = new Map(
+      rows.map((row) => [row.resourceId, JSON.parse(row.slots) as SlotDto[]]),
+    );
+    const blockingIdsByResource = new Map(
+      blockers.map((b) => [
+        b.resourceId,
+        JSON.parse(b.blockingIds) as number[],
+      ]),
+    );
+
+    return [...slotsByResource].map(([resourceId, slots]) => ({
+      resourceId,
+      slots: annotateConflicts(
+        slots,
+        (blockingIdsByResource.get(resourceId) ?? []).flatMap(
+          (id) => slotsByResource.get(id) ?? [],
+        ),
+      ),
     }));
   }
 
@@ -80,7 +107,10 @@ export class SlotsService {
 }
 
 // Expects slots sorted by start time.
-function annotateConflicts(slots: SlotDto[]): SlotDto[] {
+function annotateConflicts(
+  slots: SlotDto[],
+  blockingSlots: SlotDto[],
+): SlotDto[] {
   let active: SlotDto[] = [];
   for (const slot of slots) {
     active = active.filter((other) => other.end > slot.start);
@@ -89,6 +119,12 @@ function annotateConflicts(slots: SlotDto[]): SlotDto[] {
       other.conflicts!.push({ ...slot, conflicts: [] });
     }
     active.push(slot);
+
+    for (const blocking of blockingSlots) {
+      if (blocking.start < slot.end && blocking.end > slot.start) {
+        slot.conflicts!.push({ ...blocking, conflicts: [] });
+      }
+    }
   }
 
   return slots;
