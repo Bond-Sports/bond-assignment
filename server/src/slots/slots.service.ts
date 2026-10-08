@@ -18,29 +18,32 @@ export class SlotsService {
     // TODO: Implement this method.
     // Return today's slots grouped by resource, including slots from
     // blocking resources. Each slot should have its conflicts computed.
-    const query = this.manager.createQueryBuilder(Resource, 'r');
-    const blockingResourceIds = query
-      .subQuery()
-      .select('bd.blockingResourceId')
-      .from(BlockingDependency, 'bd')
-      .where('bd.blockedResourceId = r.id')
-      .getQuery();
+    const [resources, dependencies] = await Promise.all([
+      this.manager
+        .createQueryBuilder(Resource, 'r')
+        .leftJoinAndMapMany('r.slots', Slot, 's', 's.resourceId = r.id')
+        .addOrderBy('s.start')
+        .getMany(),
+      this.manager.find(BlockingDependency),
+    ]);
 
-    const resources = (await query
-      .leftJoinAndMapMany('r.slots', Slot, 's', 's.resourceId = r.id')
-      .leftJoinAndMapMany(
-        'r.blockingSlots',
-        Slot,
-        'bs',
-        `bs.resourceId IN ${blockingResourceIds}`,
-      )
-      .addOrderBy('s.start')
-      .getMany()) as (Resource & { blockingSlots: Slot[] })[];
+    const slotsByResource = new Map(resources.map((r) => [r.id, r.slots]));
+    const blockingIdsByResource = new Map<number, number[]>();
+    for (const { blockedResourceId, blockingResourceId } of dependencies) {
+      const ids = blockingIdsByResource.get(blockedResourceId) ?? [];
+      ids.push(blockingResourceId);
+      blockingIdsByResource.set(blockedResourceId, ids);
+    }
 
-    return resources.map(({ id, slots, blockingSlots }) => ({
-      resourceId: id,
-      slots: annotateConflicts(slots, blockingSlots),
-    }));
+    return resources.map(({ id, slots }) => {
+      const blockingSlots = (blockingIdsByResource.get(id) ?? []).flatMap(
+        (blockingId) => slotsByResource.get(blockingId) ?? [],
+      );
+      return {
+        resourceId: id,
+        slots: annotateConflicts(slots, blockingSlots),
+      };
+    });
   }
 
   async addSlot(createSlot: CreateSlotDto): Promise<SlotDto> {
