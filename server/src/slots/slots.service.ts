@@ -18,55 +18,28 @@ export class SlotsService {
     // TODO: Implement this method.
     // Return today's slots grouped by resource, including slots from
     // blocking resources. Each slot should have its conflicts computed.
-    const [rows, blockers] = await Promise.all([
-      this.manager.query<{ resourceId: number; slots: string }[]>(`
-        SELECT
-          r.id AS resourceId,
-          COALESCE(
-            json_group_array(
-              json_object(
-                'id', s.id,
-                'name', s.name,
-                'start', s.start,
-                'end', s.end,
-                'resourceId', s.resource_id,
-                'conflicts', json('[]')
-              ) ORDER BY s.start, s.id
-            ) FILTER (WHERE s.id IS NOT NULL),
-            '[]'
-          ) AS slots
-        FROM Resources r
-        LEFT JOIN Slots s ON s.resource_id = r.id
-        GROUP BY r.id
-        ORDER BY r.id
-      `),
-      this.manager.query<{ resourceId: number; blockingIds: string }[]>(`
-        SELECT
-          blocked_resource_id AS resourceId,
-          json_group_array(blocking_resource_id) AS blockingIds
-        FROM BlockingDependencies
-        GROUP BY blocked_resource_id
-      `),
-    ]);
+    const query = this.manager.createQueryBuilder(Resource, 'r');
+    const blockingResourceIds = query
+      .subQuery()
+      .select('bd.blockingResourceId')
+      .from(BlockingDependency, 'bd')
+      .where('bd.blockedResourceId = r.id')
+      .getQuery();
 
-    const slotsByResource = new Map(
-      rows.map((row) => [row.resourceId, JSON.parse(row.slots) as SlotDto[]]),
-    );
-    const blockingIdsByResource = new Map(
-      blockers.map((b) => [
-        b.resourceId,
-        JSON.parse(b.blockingIds) as number[],
-      ]),
-    );
+    const resources = (await query
+      .leftJoinAndMapMany('r.slots', Slot, 's', 's.resourceId = r.id')
+      .leftJoinAndMapMany(
+        'r.blockingSlots',
+        Slot,
+        'bs',
+        `bs.resourceId IN ${blockingResourceIds}`,
+      )
+      .addOrderBy('s.start')
+      .getMany()) as (Resource & { blockingSlots: Slot[] })[];
 
-    return [...slotsByResource].map(([resourceId, slots]) => ({
-      resourceId,
-      slots: annotateConflicts(
-        slots,
-        (blockingIdsByResource.get(resourceId) ?? []).flatMap(
-          (id) => slotsByResource.get(id) ?? [],
-        ),
-      ),
+    return resources.map(({ id, slots, blockingSlots }) => ({
+      resourceId: id,
+      slots: annotateConflicts(slots, blockingSlots),
     }));
   }
 
@@ -107,12 +80,14 @@ export class SlotsService {
 }
 
 // Expects slots sorted by start time.
-function annotateConflicts(
-  slots: SlotDto[],
-  blockingSlots: SlotDto[],
-): SlotDto[] {
+function annotateConflicts(slots: Slot[], blockingSlots: Slot[]): SlotDto[] {
+  const annotated: SlotDto[] = slots.map((slot) => ({
+    ...slot,
+    conflicts: [],
+  }));
+
   let active: SlotDto[] = [];
-  for (const slot of slots) {
+  for (const slot of annotated) {
     active = active.filter((other) => other.end > slot.start);
     for (const other of active) {
       slot.conflicts!.push({ ...other, conflicts: [] });
@@ -127,5 +102,5 @@ function annotateConflicts(
     }
   }
 
-  return slots;
+  return annotated;
 }
